@@ -1,0 +1,479 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Herramienta de Formatos</title>
+<style>
+  :root {
+    --fondo: #f6f7f9; --panel: #ffffff; --texto: #1d2330; --suave: #5b6475;
+    --borde: #d9dde5; --acento: #1f6feb; --ok: #1a7f37; --mal: #c62828;
+    --num: #dbeafe; --pre: #fde68a; --par: #e5e7eb;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #14171c; --panel: #1d2128; --texto: #e6e9ef; --suave: #9aa3b2;
+      --borde: #343a45; --acento: #4f8ff7; --ok: #4ac26b; --mal: #ff6b6b;
+      --num: #1e3a5f; --pre: #5c4a12; --par: #2b3038;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--fondo); color: var(--texto);
+         font: 15px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 900px; margin: 0 auto; padding: 20px 16px 60px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 0 0 10px; }
+  p.sub { color: var(--suave); margin: 0 0 18px; }
+  section { background: var(--panel); border: 1px solid var(--borde);
+            border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin: 10px 0 4px; }
+  label small { font-weight: 400; color: var(--suave); }
+  input, textarea, select { width: 100%; padding: 8px 10px; font: inherit;
+         color: var(--texto); background: var(--fondo);
+         border: 1px solid var(--borde); border-radius: 6px; }
+  textarea { min-height: 70px; font-family: ui-monospace, Consolas, monospace; }
+  .fila { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+  button { font: inherit; padding: 8px 14px; border-radius: 6px; cursor: pointer;
+           border: 1px solid var(--acento); background: var(--acento); color: #fff; margin: 10px 8px 0 0; }
+  button.sec { background: transparent; color: var(--acento); }
+  button.peq { padding: 3px 8px; margin: 0; font-size: 13px; }
+  .bits { font-family: ui-monospace, Consolas, monospace; font-size: 14px;
+          display: flex; flex-wrap: wrap; gap: 2px; margin: 10px 0; }
+  .bits span { display: inline-block; width: 20px; text-align: center;
+               border-radius: 3px; background: var(--par); }
+  .bits span.n { background: var(--num); }
+  .bits span.p { background: var(--pre); }
+  .bits span i { display: block; font-style: normal; font-size: 9px; color: var(--suave); }
+  .msg { padding: 10px 12px; border-radius: 6px; margin-top: 10px; border: 1px solid var(--borde); }
+  .msg.ok { border-color: var(--ok); }
+  .msg.mal { border-color: var(--mal); color: var(--mal); }
+  .grande { font-size: 20px; font-weight: 700; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 6px; border-bottom: 1px solid var(--borde); vertical-align: top; }
+  .tabla { overflow-x: auto; }
+  ol { padding-left: 20px; margin: 0; }
+  code { font-family: ui-monospace, Consolas, monospace; }
+  .leyenda span { display: inline-block; padding: 0 6px; border-radius: 3px; margin-right: 8px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Herramienta de formatos</h1>
+  <p class="sub">Multi Lector con prefijo. Enseña al lector dónde están el prefijo y el número impreso de cada tipo de tarjeta.</p>
+
+  <section>
+    <h2>Cómo se usa</h2>
+    <ol>
+      <li>Con el programa ya cargado, poner <b>SW1 en ON</b> (diagnóstico) y pasar la tarjeta. El reloj recibe 3 o 4 números: 1xxxxx, 2xxxxx, 3xxxxx y a veces 4xxxxx.</li>
+      <li>Escribir aquí esos números, el número impreso en la tarjeta y su prefijo, y pulsar <b>Analizar</b>.</li>
+      <li>Si el resultado es correcto, pulsar <b>Agregar a la lista</b>. Repetir con cada tipo de tarjeta o prefijo distinto.</li>
+      <li>Pulsar <b>Descargar formatos.hex</b>, dejar el archivo en la misma carpeta que <code>2 Cargar formatos.bat</code> y ejecutar ese .bat con el USBtiny.</li>
+      <li>Volver SW1 a OFF. Al pasar la tarjeta el reloj recibe el prefijo seguido del número impreso.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>1. Datos de la tarjeta</h2>
+    <label>Números del diagnóstico <small>(en cualquier orden, separados por espacio o por línea)</small></label>
+    <textarea id="diag" placeholder="100036 231088 301945 440960"></textarea>
+    <div class="fila">
+      <div>
+        <label>Número impreso <small>(tal como aparece, con sus ceros)</small></label>
+        <input id="impreso" inputmode="numeric" placeholder="12345">
+      </div>
+      <div>
+        <label>Prefijo <small>(vacío = sin prefijo)</small></label>
+        <input id="prefijo" inputmode="numeric" placeholder="569">
+      </div>
+      <div>
+        <label>Dígitos del número <small>(relleno con ceros)</small></label>
+        <input id="digitos" inputmode="numeric" placeholder="5">
+      </div>
+    </div>
+    <button id="analizar">Analizar</button>
+    <div id="resultado"></div>
+  </section>
+
+  <section id="ajuste" hidden>
+    <h2>2. Formato encontrado</h2>
+    <p class="leyenda"><span style="background:var(--num)">número impreso</span><span style="background:var(--pre)">prefijo / código</span></p>
+    <div id="vistaBits" class="bits"></div>
+    <div class="fila">
+      <div><label>Número: desde bit</label><input id="numDesde" type="number" min="0"></div>
+      <div><label>Número: cantidad de bits</label><input id="numAncho" type="number" min="1" max="32"></div>
+      <div><label>Número en</label><select id="numBcd"><option value="0">binario</option><option value="1">BCD</option></select></div>
+    </div>
+    <div class="fila">
+      <div><label>Modo del prefijo</label>
+        <select id="modo">
+          <option value="1">se lee de la tarjeta</option>
+          <option value="2">fijo según código de la tarjeta</option>
+          <option value="0">sin prefijo</option>
+        </select></div>
+      <div><label>Prefijo/código: desde bit</label><input id="preDesde" type="number" min="0"></div>
+      <div><label>Prefijo/código: cantidad de bits</label><input id="preAncho" type="number" min="0" max="32"></div>
+      <div><label>Prefijo/código en</label><select id="preBcd"><option value="0">binario</option><option value="1">BCD</option></select></div>
+    </div>
+    <div class="fila">
+      <div><label>Código de la tarjeta <small>(modo fijo)</small></label><input id="clave" type="number" min="0"></div>
+      <div><label>Prefijo a enviar <small>(modo fijo)</small></label><input id="prefijoFijo" type="number" min="0"></div>
+      <div><label>Dígitos del número</label><input id="digitosAj" type="number" min="0" max="9"></div>
+    </div>
+    <button class="sec" id="recalcular">Recalcular con estos valores</button>
+    <div id="prueba"></div>
+    <button id="agregar">Agregar a la lista</button>
+  </section>
+
+  <section>
+    <h2>3. Formatos cargados</h2>
+    <div class="tabla"><table>
+      <thead><tr><th>#</th><th>Bits</th><th>Número</th><th>Prefijo</th><th>Dígitos</th><th></th></tr></thead>
+      <tbody id="lista"></tbody>
+    </table></div>
+    <button id="descargar">Descargar formatos.hex</button>
+    <button class="sec" id="importarBtn">Abrir un formatos.hex</button>
+    <button class="sec" id="vaciar">Vaciar lista</button>
+    <input id="importar" type="file" accept=".hex,.txt" hidden>
+    <div id="msgLista"></div>
+  </section>
+</main>
+
+<script id="logica">
+// ---------- Logica (sin pantalla; se prueba aparte con node) ----------
+
+const CONOCIDOS = {
+  26: { num: [9, 16, 0], clave: [1, 8] },     // H10301
+  34: { num: [17, 16, 0], clave: [1, 16] },
+  35: { num: [14, 20, 0], clave: [2, 12] },   // Corporate 1000
+  36: { num: [12, 20, 1], clave: [0, 12] },   // BCD 9 digitos
+  37: { num: [17, 19, 0], clave: [1, 16] },   // H10304
+};
+
+// "100036 207970 ..." -> { bits: "0101...", n }
+function leerDiagnostico(texto) {
+  const nums = (texto.match(/\d+/g) || []).map(Number);
+  const partes = {};
+  for (const v of nums) {
+    const k = Math.floor(v / 100000), resto = v % 100000;
+    if (k < 1 || k > 5) throw new Error('El número ' + v + ' no es del diagnóstico (debe empezar con 1 a 5 y tener 6 dígitos).');
+    if (k > 1 && resto > 65535) throw new Error('El número ' + v + ' está fuera de rango.');
+    partes[k] = resto;
+  }
+  if (partes[1] === undefined) throw new Error('Falta el número 1xxxxx (cantidad de bits).');
+  const n = partes[1];
+  if (n < 4 || n > 64) throw new Error('Cantidad de bits no válida: ' + n);
+  let bits = '';
+  for (let k = 2; (k - 2) * 16 < n; k++) {
+    if (partes[k] === undefined) throw new Error('Falta el número ' + k + 'xxxxx.');
+    bits += partes[k].toString(2).padStart(16, '0');
+  }
+  if (/1/.test(bits.slice(n))) throw new Error('Los números no calzan con ' + n + ' bits. Revise que estén bien escritos.');
+  return { bits: bits.slice(0, n), n };
+}
+
+function campo(bits, desde, ancho, bcd) {
+  if (ancho <= 0 || ancho > 32 || desde < 0 || desde + ancho > bits.length) return null;
+  const s = bits.substr(desde, ancho);
+  if (!bcd) return parseInt(s, 2);
+  if (ancho % 4) return null;
+  let v = 0;
+  for (let i = 0; i < ancho; i += 4) {
+    const d = parseInt(s.substr(i, 4), 2);
+    if (d > 9) return null;
+    v = v * 10 + d;
+  }
+  return v;
+}
+
+const solapa = (a, b) => a[0] < b[0] + b[1] && b[0] < a[0] + a[1];
+
+// Busca dónde están el número impreso y el prefijo
+function sugerir(bits, impresoTxt, prefijoTxt, digitosTxt) {
+  const n = bits.length;
+  const impreso = parseInt(impresoTxt, 10);
+  if (!/^\d+$/.test(impresoTxt)) throw new Error('Escriba el número impreso (solo dígitos).');
+  const digitos = digitosTxt !== '' && digitosTxt != null ? parseInt(digitosTxt, 10) : Math.max(5, impresoTxt.length);
+  const conocido = CONOCIDOS[n];
+  let num = null;   // [desde, ancho, bcd]
+
+  if (conocido && campo(bits, conocido.num[0], conocido.num[1], conocido.num[2]) === impreso) num = conocido.num.slice();
+  // BCD con los mismos dígitos impresos
+  if (!num) {
+    const a = 4 * impresoTxt.length;
+    for (let d = 0; d + a <= n && !num; d++) if (campo(bits, d, a, 1) === impreso) num = [d, a, 1];
+  }
+  // binario terminando antes de la paridad final, lo más ancho posible
+  if (!num) {
+    for (let a = Math.min(32, n - 2); a >= 1 && !num; a--)
+      if (campo(bits, n - 1 - a, a, 0) === impreso) num = [n - 1 - a, a, 0];
+  }
+  // binario en cualquier lugar (ancho justo)
+  if (!num && impreso > 0) {
+    const a = impreso.toString(2).length;
+    for (let d = n - a; d >= 0 && !num; d--) if (campo(bits, d, a, 0) === impreso) num = [d, a, 0];
+  }
+  if (!num) throw new Error('No se encontró el número ' + impresoTxt + ' en los bits de la tarjeta. Revise el número impreso y los números del diagnóstico.');
+
+  const f = { bits: n, numDesde: num[0], numAncho: num[1], numBcd: num[2], preDesde: 0, preAncho: 0,
+              preBcd: 0, modo: 0, digitos, clave: 0, prefijo: 0, nota: '' };
+  if (!prefijoTxt) { f.nota = 'Sin prefijo.'; return f; }
+  if (!/^\d+$/.test(prefijoTxt)) throw new Error('El prefijo debe tener solo dígitos.');
+  const prefijo = parseInt(prefijoTxt, 10);
+
+  // prefijo en BCD dentro de la tarjeta
+  const ap = 4 * prefijoTxt.length;
+  for (let d = 0; d + ap <= n; d++) {
+    if (!solapa([d, ap], num) && campo(bits, d, ap, 1) === prefijo) {
+      Object.assign(f, { modo: 1, preDesde: d, preAncho: ap, preBcd: 1,
+        nota: 'El prefijo viene en la tarjeta (BCD, bits ' + d + ' a ' + (d + ap - 1) + '). Sirve para cualquier prefijo de este formato.' });
+      return f;
+    }
+  }
+  // código de instalación (los bits antes del número)
+  let clave = conocido && !solapa(conocido.clave, num) ? conocido.clave.slice() : null;
+  if (!clave) {
+    const ini = num[2] ? 0 : 1, a = Math.min(32, num[0] - ini);
+    clave = a > 0 ? [num[0] - a, a] : [0, 0];
+  }
+  const valor = clave[1] ? campo(bits, clave[0], clave[1], 0) : null;
+  if (clave[1] && valor === prefijo) {
+    Object.assign(f, { modo: 1, preDesde: clave[0], preAncho: clave[1], preBcd: 0,
+      nota: 'El prefijo viene en la tarjeta (código de instalación, bits ' + clave[0] + ' a ' + (clave[0] + clave[1] - 1) + '). Sirve para cualquier prefijo de este formato.' });
+    return f;
+  }
+  Object.assign(f, { modo: 2, preDesde: clave[0], preAncho: clave[1], preBcd: 0, clave: valor || 0, prefijo,
+    nota: clave[1]
+      ? 'El prefijo no está escrito tal cual en la tarjeta. Las tarjetas de ' + n + ' bits con código ' + valor + ' (bits ' + clave[0] + ' a ' + (clave[0] + clave[1] - 1) + ') llevarán el prefijo ' + prefijo + '. Para otro prefijo, pase una tarjeta de ese prefijo y agréguela también.'
+      : 'Esta tarjeta no trae código. Todas las tarjetas de ' + n + ' bits llevarán el prefijo ' + prefijo + '.' });
+  return f;
+}
+
+// Igual que el firmware: numero que se enviaria al reloj
+function conPrefijo(prefijo, numero, digitos) {
+  let escala = 1;
+  for (let i = 0; i < digitos; i++) escala *= 10;
+  while (escala <= numero) escala *= 10;
+  return prefijo * escala + numero;
+}
+
+function numeroAEnviar(lista, bits) {
+  const n = bits.length;
+  for (const f of ordenar(lista)) {
+    if (f.bits !== n) continue;
+    const numero = campo(bits, f.numDesde, f.numAncho, f.numBcd);
+    if (numero === null) continue;
+    let c = 0;
+    if (f.modo !== 0 && (f.modo === 1 || f.preAncho)) {
+      c = campo(bits, f.preDesde, f.preAncho, f.preBcd);
+      if (c === null) continue;
+    }
+    if (f.modo === 2 && f.preAncho && c !== f.clave) continue;
+    if (f.modo === 0) return { valor: numero, formato: f };
+    return { valor: conPrefijo(f.modo === 2 ? f.prefijo : c, numero, f.digitos), formato: f };
+  }
+  return null;
+}
+
+// fijos por código primero, despues los leidos, al final sin prefijo
+function ordenar(lista) {
+  const peso = f => (f.modo === 2 ? (f.preAncho ? 0 : 1) : f.modo === 1 ? 2 : 3);
+  return lista.slice().sort((a, b) => peso(a) - peso(b));
+}
+
+function mismoFormato(a, b) {
+  return ['bits', 'numDesde', 'numAncho', 'numBcd', 'preDesde', 'preAncho', 'preBcd', 'modo', 'clave']
+    .every(k => a[k] === b[k]);
+}
+
+// Lista -> Intel HEX de la EEPROM (16 bytes por formato, 0xFF al final)
+function aBytes(lista) {
+  const out = [];
+  for (const f of ordenar(lista)) {
+    const u32 = v => [v & 255, (v >>> 8) & 255, (v >>> 16) & 255, (v >>> 24) & 255];
+    out.push(f.bits, f.numDesde, f.numAncho, f.preDesde, f.preAncho,
+             (f.numBcd ? 1 : 0) | (f.preBcd ? 2 : 0), f.modo, f.digitos,
+             ...u32(f.clave >>> 0), ...u32(f.prefijo >>> 0));
+  }
+  out.push(...new Array(16).fill(255));
+  return out;
+}
+
+function aIntelHex(bytes) {
+  const hx = v => v.toString(16).toUpperCase().padStart(2, '0');
+  const lineas = [];
+  for (let a = 0; a < bytes.length; a += 16) {
+    const d = bytes.slice(a, a + 16);
+    const rec = [d.length, (a >> 8) & 255, a & 255, 0, ...d];
+    const suma = (256 - rec.reduce((s, v) => s + v, 0) % 256) % 256;
+    lineas.push(':' + rec.map(hx).join('') + hx(suma));
+  }
+  lineas.push(':00000001FF');
+  return lineas.join('\r\n') + '\r\n';
+}
+
+function deIntelHex(texto) {
+  const mem = [];
+  for (const l of texto.split(/\r?\n/)) {
+    if (!l.startsWith(':')) continue;
+    const b = l.slice(1).match(/../g).map(h => parseInt(h, 16));
+    if (b[3] !== 0) continue;
+    const dir = (b[1] << 8) | b[2];
+    for (let i = 0; i < b[0]; i++) mem[dir + i] = b[4 + i];
+  }
+  const lista = [];
+  for (let a = 0; a + 16 <= mem.length; a += 16) {
+    const e = mem.slice(a, a + 16);
+    if (e[0] === undefined || e[0] === 0 || e[0] === 255) break;
+    const u32 = i => (e[i] | (e[i + 1] << 8) | (e[i + 2] << 16) | (e[i + 3] << 24)) >>> 0;
+    lista.push({ bits: e[0], numDesde: e[1], numAncho: e[2], preDesde: e[3], preAncho: e[4],
+      numBcd: e[5] & 1, preBcd: (e[5] >> 1) & 1, modo: e[6], digitos: e[7], clave: u32(8), prefijo: u32(12) });
+  }
+  return lista;
+}
+
+if (typeof module !== 'undefined') module.exports = { leerDiagnostico, sugerir, numeroAEnviar, aBytes, aIntelHex, deIntelHex, campo };
+</script>
+
+<script>
+// ---------- Pantalla ----------
+const $ = id => document.getElementById(id);
+let lista = [];
+let actual = null;   // { bits, f }
+
+try { lista = JSON.parse(localStorage.getItem('formatos') || '[]'); } catch (e) { lista = []; }
+const guardar = () => { try { localStorage.setItem('formatos', JSON.stringify(lista)); } catch (e) {} };
+
+function mensaje(el, texto, tipo) {
+  el.innerHTML = '';
+  if (!texto) return;
+  const d = document.createElement('div');
+  d.className = 'msg ' + (tipo || '');
+  d.innerHTML = texto;
+  el.appendChild(d);
+}
+
+function describirNumero(f) {
+  return 'bits ' + f.numDesde + '–' + (f.numDesde + f.numAncho - 1) + (f.numBcd ? ' (BCD)' : '');
+}
+function describirPrefijo(f) {
+  if (f.modo === 0) return 'sin prefijo';
+  const pos = f.preAncho ? 'bits ' + f.preDesde + '–' + (f.preDesde + f.preAncho - 1) + (f.preBcd ? ' BCD' : '') : '';
+  if (f.modo === 1) return 'se lee de la tarjeta (' + pos + ')';
+  return f.preAncho ? '<b>' + f.prefijo + '</b> si el código (' + pos + ') es ' + f.clave
+                    : '<b>' + f.prefijo + '</b> para toda tarjeta de ' + f.bits + ' bits';
+}
+
+function pintarBits() {
+  const f = actual.f, cont = $('vistaBits');
+  cont.innerHTML = '';
+  [...actual.bits].forEach((b, i) => {
+    const s = document.createElement('span');
+    if (i >= f.numDesde && i < f.numDesde + f.numAncho) s.className = 'n';
+    else if (f.modo !== 0 && f.preAncho && i >= f.preDesde && i < f.preDesde + f.preAncho) s.className = 'p';
+    s.innerHTML = b + '<i>' + i + '</i>';
+    cont.appendChild(s);
+  });
+}
+
+function mostrarAjuste() {
+  const f = actual.f;
+  for (const k of ['numDesde', 'numAncho', 'preDesde', 'preAncho', 'clave']) $(k).value = f[k];
+  $('numBcd').value = f.numBcd; $('preBcd').value = f.preBcd; $('modo').value = f.modo;
+  $('prefijoFijo').value = f.prefijo; $('digitosAj').value = f.digitos;
+  $('ajuste').hidden = false;
+  pintarBits();
+  probar();
+}
+
+function probar() {
+  const f = actual.f;
+  const r = numeroAEnviar([f], actual.bits);
+  const impreso = campo(actual.bits, f.numDesde, f.numAncho, f.numBcd);
+  let txt = '<div>' + f.nota + '</div>';
+  if (r) txt += '<div style="margin-top:8px">Número impreso leído: <b>' + impreso + '</b>. Al reloj se enviará: <span class="grande">' + r.valor + '</span></div>';
+  else txt = '<div>Con estos valores la tarjeta no coincide con el formato.</div>';
+  const malo = !r || r.valor > 4294967295;
+  if (r && r.valor > 4294967295) txt += '<div>El número pasa de 4294967295 y no cabe en Wiegand 34. Use menos dígitos o un prefijo más corto.</div>';
+  mensaje($('prueba'), txt, malo ? 'mal' : 'ok');
+  $('agregar').disabled = malo;
+}
+
+$('analizar').onclick = () => {
+  $('ajuste').hidden = true;
+  try {
+    const { bits } = leerDiagnostico($('diag').value);
+    const f = sugerir(bits, $('impreso').value.trim(), $('prefijo').value.trim(), $('digitos').value.trim());
+    actual = { bits, f };
+    mensaje($('resultado'), 'Tarjeta de <b>' + bits.length + ' bits</b>. Número impreso en ' + describirNumero(f) + '.', 'ok');
+    mostrarAjuste();
+  } catch (e) {
+    mensaje($('resultado'), e.message, 'mal');
+  }
+};
+
+$('recalcular').onclick = () => {
+  const f = actual.f, num = id => parseInt($(id).value, 10) || 0;
+  Object.assign(f, { numDesde: num('numDesde'), numAncho: num('numAncho'), numBcd: num('numBcd'),
+    preDesde: num('preDesde'), preAncho: num('preAncho'), preBcd: num('preBcd'), modo: num('modo'),
+    clave: num('clave'), prefijo: num('prefijoFijo'), digitos: num('digitosAj'), nota: 'Valores ajustados a mano.' });
+  pintarBits();
+  probar();
+};
+
+$('agregar').onclick = () => {
+  const f = Object.assign({}, actual.f);
+  delete f.nota;
+  const i = lista.findIndex(g => mismoFormato(g, f));
+  if (i >= 0) lista[i] = f; else lista.push(f);
+  if (lista.length > 63) { lista.pop(); alert('La memoria admite 63 formatos como máximo.'); }
+  guardar();
+  pintarLista();
+  mensaje($('msgLista'), i >= 0 ? 'Ese formato ya estaba; se actualizó.' : 'Formato agregado. Puede pasar otra tarjeta o descargar formatos.hex.', 'ok');
+};
+
+function pintarLista() {
+  const tb = $('lista');
+  tb.innerHTML = '';
+  ordenar(lista).forEach((f, i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = '<td>' + (i + 1) + '</td><td>' + f.bits + '</td><td>' + describirNumero(f) + '</td><td>' +
+      describirPrefijo(f) + '</td><td>' + f.digitos + '</td><td></td>';
+    const b = document.createElement('button');
+    b.className = 'sec peq'; b.textContent = 'Quitar';
+    b.onclick = () => { lista.splice(lista.indexOf(f), 1); guardar(); pintarLista(); };
+    tr.lastChild.appendChild(b);
+    tb.appendChild(tr);
+  });
+  if (!lista.length) tb.innerHTML = '<tr><td colspan="6">Todavía no hay formatos. Sin formatos el lector envía el número sin prefijo.</td></tr>';
+}
+
+$('descargar').onclick = () => {
+  const blob = new Blob([aIntelHex(aBytes(lista))], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'formatos.hex';
+  a.click();
+  mensaje($('msgLista'), 'Se descargó <code>formatos.hex</code>. Muévalo a la carpeta de <code>2 Cargar formatos.bat</code> (reemplazando el anterior) y ejecute el .bat.', 'ok');
+};
+
+$('importarBtn').onclick = () => $('importar').click();
+$('importar').onchange = async e => {
+  const file = e.target.files[0];
+  if (!file) return;
+  try {
+    lista = deIntelHex(await file.text());
+    guardar(); pintarLista();
+    mensaje($('msgLista'), 'Se abrieron ' + lista.length + ' formatos.', 'ok');
+  } catch (err) { mensaje($('msgLista'), 'No se pudo leer el archivo.', 'mal'); }
+  e.target.value = '';
+};
+
+$('vaciar').onclick = () => {
+  if (lista.length && !confirm('¿Vaciar la lista de formatos?')) return;
+  lista = []; guardar(); pintarLista(); mensaje($('msgLista'), '');
+};
+
+pintarLista();
+</script>
+</body>
+</html>

@@ -1,50 +1,54 @@
 /*
   Multi_Lector_Prefijo.ino  (placa GV_CableCedula v2.0, ATmega328P)
   ------------------------------------------------------------------
-  Lector de tarjetas HID que antepone un prefijo al numero de la
-  tarjeta antes de enviarlo al reloj. Ya no lee cedulas.
+  Lector de tarjetas HID. Al leer una tarjeta busca su formato en la
+  tabla de formatos (EEPROM), saca el numero impreso y el prefijo, y
+  envia al reloj el prefijo seguido del numero impreso.
 
-  Switches (se leen en cada lectura, no hace falta reiniciar):
-    SW1 y SW2 eligen el prefijo de la tabla PREFIJOS:
-       SW1 OFF, SW2 OFF -> PREFIJOS[0]
-       SW1 ON,  SW2 OFF -> PREFIJOS[1]
-       SW1 OFF, SW2 ON  -> PREFIJOS[2]
-       SW1 ON,  SW2 ON  -> PREFIJOS[3]
-    SW3 ON -> modo prueba: envia el prefijo elegido cada 5 s
-              (si el prefijo es 0 envia 123456)
+  La tabla se arma con la herramienta "Herramienta_Formatos.html" y
+  se graba con "2 Cargar formatos.bat" (solo EEPROM, no toca el
+  programa). Con el fusible EESAVE la tabla no se borra al volver a
+  grabar el programa.
 
-  Numero enviado = prefijo seguido del numero de la tarjeta con
-  DIGITOS_TARJETA digitos (ceros a la izquierda). Ejemplo con 5:
-    prefijo 569, tarjeta 12345 -> 56912345
-    prefijo 569, tarjeta 799   -> 56900799
-  Con prefijo 0 se envia solo el numero de la tarjeta.
-  Se envia como Wiegand 34 (32 bits, igual que salian las cedulas),
-  asi caben numeros de hasta 4294967295.
+  Cada formato (16 bytes en la EEPROM) dice:
+    - cuantos bits tiene la tarjeta
+    - en que bits esta el numero impreso (binario o BCD)
+    - en que bits esta el prefijo (binario o BCD)
+    - modo 1: el prefijo se lee de la tarjeta tal cual
+      modo 2: si esos bits valen "clave" se envia el prefijo "prefijo"
+      modo 0: sin prefijo
+    - con cuantos digitos se rellena el numero impreso
+  Se usa el primer formato que coincide. Si ninguno coincide se envia
+  el numero como antes (26, 35 y 36 bits), sin prefijo.
+
+  Ejemplo: prefijo 569, numero impreso 12345, 5 digitos -> 56912345.
+  Se envia como Wiegand 34 (32 bits, igual que salian las cedulas).
+
+  Switches (ON = GND, se leen en cada lectura):
+    todos OFF -> normal: prefijo + numero impreso
+    SW1 ON    -> diagnostico: al pasar una tarjeta envia
+                 1xxxxx = cantidad de bits (100000 + bits)
+                 2xxxxx = bits 0..15  (200000 + valor)
+                 3xxxxx = bits 16..31 (300000 + valor)
+                 4xxxxx = bits 32..47 (si la tarjeta tiene mas de 32)
+                 5xxxxx = bits 48..63 (si tiene mas de 48)
+                 Esos numeros se escriben en la herramienta.
+    SW2 ON    -> prueba: envia cada 5 s los prefijos fijos cargados
+                 (uno por vez); si no hay ninguno envia 123456
+    SW3 ON    -> sin prefijo: solo el numero impreso
 
   Conexiones:
     Lector DATA0 (verde) -> J3 pin 5 (A4), DATA1 (blanco) -> J3 pin 6 (A5)
     Reloj: D8 = DATA0, D9 = DATA1
-    Switch 1 = D4, switch 2 = D3, switch 3 = D2 (ON = GND)
-  Formatos de tarjeta:
-    26 bits (H10301):          numero = bits 9..24
-    35 bits (Corporate 1000):  numero = bits 14..33
-    36 bits (BCD, 9 digitos):  numero = digitos 4..8 (bits 12..31),
-                               ej. 0x79700799A -> 00799
-    otros:                     24 bits bajos sin la paridad final
+    Switch 1 = D4, switch 2 = D3, switch 3 = D2
   ------------------------------------------------------------------
 */
 
+#include <avr/eeprom.h>
 #include <avr/interrupt.h>
 #include <avr/io.h>
 
 // ===================== CONFIGURACION ==============================
-
-// Prefijos que se eligen con SW1 y SW2 (0 = sin prefijo)
-const uint32_t PREFIJOS[4] = { 569, 0, 0, 0 };
-
-// Digitos que ocupa la tarjeta detras del prefijo (0 = pegar el
-// numero tal cual, sin ceros de relleno)
-const uint8_t DIGITOS_TARJETA = 5;
 
 const uint8_t RELOJ_D0 = (1 << 0);     // D8 = PB0
 const uint8_t RELOJ_D1 = (1 << 1);     // D9 = PB1
@@ -59,6 +63,26 @@ const uint8_t MASK_IN = MASK_IN_D0 | MASK_IN_D1;
 const uint16_t MIN_LOW_US = 20;
 const uint16_t MAX_LOW_US = 250;
 const uint32_t FIN_TRAMA_US = 120000UL;
+
+// ===================== TABLA DE FORMATOS ==========================
+
+struct Formato {          // 16 bytes, igual que en la herramienta
+  uint8_t  bits;          // 0 o 0xFF = fin de la tabla
+  uint8_t  numDesde, numAncho;
+  uint8_t  preDesde, preAncho;
+  uint8_t  bcd;           // bit0 = numero en BCD, bit1 = prefijo en BCD
+  uint8_t  modo;          // 0 sin prefijo, 1 leido, 2 fijo por clave
+  uint8_t  digitos;       // relleno del numero impreso
+  uint32_t clave;
+  uint32_t prefijo;
+};
+
+const uint8_t MAX_FORMATOS = 1024 / sizeof(Formato);
+
+static bool leerFormato(uint8_t i, Formato &f) {
+  eeprom_read_block(&f, (const void *)(i * sizeof(Formato)), sizeof(Formato));
+  return f.bits != 0 && f.bits != 0xFF;
+}
 
 // ===================== LECTURA ====================================
 
@@ -96,21 +120,56 @@ static uint32_t tomarBits(uint64_t raw, uint8_t n, uint8_t desde, uint8_t hasta)
   return (uint32_t)((raw >> (n - 1 - hasta)) & ((1ULL << ancho) - 1));
 }
 
-// Numero de la tarjeta segun su formato
-static uint32_t numeroTarjeta(uint64_t raw, uint8_t n) {
-  if (n == 36) {                       // BCD: 5 digitos en bits 12..31
-    uint32_t bcd = tomarBits(raw, n, 12, 31), num = 0;
-    for (int8_t i = 4; i >= 0; i--) {
-      uint8_t dig = (bcd >> (4 * i)) & 0xF;
-      if (dig > 9) return tomarBits(raw, n, n - 25, n - 2);
-      num = num * 10 + dig;
-    }
-    return num;
+// Campo de "ancho" bits desde "desde", en binario o BCD.
+// Devuelve false si no cabe en la tarjeta o el BCD trae un no-digito.
+static bool leerCampo(uint64_t raw, uint8_t n, uint8_t desde, uint8_t ancho,
+                      bool bcd, uint32_t &valor) {
+  if (ancho == 0 || ancho > 32 || desde + ancho > n) return false;
+  uint32_t v = tomarBits(raw, n, desde, desde + ancho - 1);
+  if (!bcd) { valor = v; return true; }
+  uint32_t num = 0;
+  for (int8_t i = ancho / 4 - 1; i >= 0; i--) {
+    uint8_t dig = (v >> (4 * i)) & 0xF;
+    if (dig > 9) return false;
+    num = num * 10 + dig;
   }
+  valor = num;
+  return true;
+}
+
+// Numero de la tarjeta sin tabla (formatos conocidos)
+static uint32_t numeroPorDefecto(uint64_t raw, uint8_t n) {
+  uint32_t v;
+  if (n == 36 && leerCampo(raw, n, 12, 20, true, v)) return v;  // BCD
   if (n == 35) return tomarBits(raw, n, 14, 33);
   if (n == 26) return tomarBits(raw, n, 9, 24);
   if (n > 26)  return tomarBits(raw, n, n - 25, n - 2);
   return tomarBits(raw, n, 0, n - 1);
+}
+
+// prefijo seguido del numero (con "digitos" digitos)
+static uint32_t conPrefijo(uint32_t prefijo, uint32_t numero, uint8_t digitos) {
+  uint32_t escala = 1;
+  for (uint8_t i = 0; i < digitos; i++) escala *= 10;
+  while (escala <= numero) escala *= 10;    // numero mas largo: no se corta
+  return prefijo * escala + numero;
+}
+
+// Busca el formato de la tarjeta y arma el numero a enviar
+static uint32_t numeroAEnviar(uint64_t raw, uint8_t n, bool usarPrefijo) {
+  Formato f;
+  for (uint8_t i = 0; i < MAX_FORMATOS && leerFormato(i, f); i++) {
+    if (f.bits != n) continue;
+    uint32_t numero, campo = 0;
+    if (!leerCampo(raw, n, f.numDesde, f.numAncho, f.bcd & 1, numero)) continue;
+    // modo 2 sin campo (preAncho 0): basta con la cantidad de bits
+    if (f.modo != 0 && (f.modo == 1 || f.preAncho) &&
+        !leerCampo(raw, n, f.preDesde, f.preAncho, f.bcd & 2, campo)) continue;
+    if (f.modo == 2 && f.preAncho && campo != f.clave) continue;
+    if (!usarPrefijo || f.modo == 0) return numero;
+    return conPrefijo(f.modo == 2 ? f.prefijo : campo, numero, f.digitos);
+  }
+  return numeroPorDefecto(raw, n);
 }
 
 // ===================== SALIDA =====================================
@@ -135,18 +194,34 @@ static void enviarW34(uint32_t d) {
   pulso(((unosBajo & 1) ^ 1) ? RELOJ_D1 : RELOJ_D0);
 }
 
-// prefijo seguido de la tarjeta (con DIGITOS_TARJETA digitos)
-static uint32_t conPrefijo(uint32_t prefijo, uint32_t tarjeta) {
-  if (prefijo == 0) return tarjeta;
-  uint32_t escala = 1;
-  for (uint8_t i = 0; i < DIGITOS_TARJETA; i++) escala *= 10;
-  while (escala <= tarjeta) escala *= 10;   // tarjeta mas larga: no se corta
-  return prefijo * escala + tarjeta;
+// ===================== MODOS ======================================
+
+static void modoPrueba() {
+  static uint8_t siguiente = 0;
+  Formato f;
+  for (uint8_t vuelta = 0; vuelta < 2; vuelta++) {
+    for (uint8_t i = siguiente; i < MAX_FORMATOS && leerFormato(i, f); i++) {
+      if (f.modo == 2) {
+        enviarW34(f.prefijo);
+        siguiente = i + 1;
+        delay(5000);
+        return;
+      }
+    }
+    if (siguiente == 0) break;              // no hay prefijos fijos
+    siguiente = 0;
+  }
+  enviarW34(123456);
+  delay(5000);
 }
 
-static uint32_t prefijoElegido() {
-  uint8_t i = (!(PIND & SW1) ? 1 : 0) | (!(PIND & SW2) ? 2 : 0);
-  return PREFIJOS[i];
+static void diagnostico(uint64_t raw, uint8_t n) {
+  uint64_t a = raw << (64 - n);           // primer bit = bit mas alto
+  enviarW34(100000UL + n);
+  for (uint8_t k = 0; k < 4 && k * 16 < n; k++) {
+    delay(1500);
+    enviarW34((k + 2) * 100000UL + (uint16_t)(a >> (48 - 16 * k)));
+  }
 }
 
 // ===================== PROGRAMA PRINCIPAL =========================
@@ -165,10 +240,8 @@ void setup() {
 }
 
 void loop() {
-  if (!(PIND & SW3)) {                 // modo prueba
-    uint32_t p = prefijoElegido();
-    enviarW34(p ? p : 123456);
-    delay(5000);
+  if (!(PIND & SW2)) {                 // prueba
+    modoPrueba();
     return;
   }
 
@@ -186,5 +259,6 @@ void loop() {
   interrupts();
 
   if (n < 4) return;                   // ruido
-  enviarW34(conPrefijo(prefijoElegido(), numeroTarjeta(raw, n)));
+  if (!(PIND & SW1)) diagnostico(raw, n);
+  else enviarW34(numeroAEnviar(raw, n, PIND & SW3));
 }
