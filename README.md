@@ -4,7 +4,25 @@ Firmware para la placa GV_CableCedula v2.0 (ATmega328P). Lee tarjetas HID, detec
 
 Ejemplo: prefijo 569 y número impreso 12345 → el reloj recibe 56912345.
 
-## Qué hay en la carpeta
+## Versión simple: `Prefijo_Simple.hex`
+
+Solo lee la tarjeta y envía al reloj **prefijo + número de tarjeta**. No usa switches, tabla ni herramienta. Se graba con `Cargar Prefijo_Simple.bat` (hfuse 0xD9).
+
+El prefijo es el código que trae la tarjeta y el número se rellena a 5 dígitos:
+
+| Tarjeta | Prefijo | Número | Se envía |
+|---|---|---|---|
+| 26 bits | bits 1–8 | bits 9–24 | 144 + 06136 = 14406136 |
+| 34 bits | bits 1–16 | bits 17–32 | |
+| 35 bits (Corporate 1000) | bits 2–13 | bits 14–33 | 3787 + 08958 = 378708958 |
+| 36 bits BCD | dígitos 1–3 | dígitos 4–8 | 797 + 00799 = 79700799 |
+| 37 bits (H10304) | bits 1–16 | bits 17–35 | |
+
+Otros formatos, o prefijo 0, se envían sin prefijo. Sale en Wiegand 34. Código: `firmware/Prefijo_Simple/Prefijo_Simple.ino` (`DIGITOS_TARJETA` cambia el relleno).
+
+## Versión con tabla de formatos
+
+### Qué hay en la carpeta
 
 | Archivo | Para qué |
 |---|---|
