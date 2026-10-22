@@ -20,6 +20,20 @@ El prefijo es el código que trae la tarjeta y el número se rellena a 5 dígito
 
 Otros formatos, o prefijo 0, se envían sin prefijo. Sale en Wiegand 34. Código: `firmware/Prefijo_Simple/Prefijo_Simple.ino` (`DIGITOS_TARJETA` cambia el relleno).
 
+## Versión con switches: `Prefijo_Switch.hex`
+
+Igual que la simple, pero con los switches para elegir qué se envía y hacer pruebas. Se graba con `Cargar Prefijo_Switch.bat` (hfuse 0xD9). Los switches se leen en cada lectura, no hace falta reiniciar.
+
+| SW1 | SW2 | SW3 | Se envía al reloj |
+|---|---|---|---|
+| OFF | OFF | OFF | prefijo + número (ej. 14406136) |
+| ON | OFF | OFF | solo el número de tarjeta (6136) |
+| OFF | ON | OFF | solo el prefijo (144) |
+| ON | ON | OFF | cantidad de bits de la tarjeta (26) |
+| cualquiera | cualquiera | ON | prueba de enlace: 123456 cada 5 s |
+
+Código: `firmware/Prefijo_Switch/Prefijo_Switch.ino`.
+
 ## Versión con tabla de formatos
 
 ### Qué hay en la carpeta
